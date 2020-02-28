@@ -10,6 +10,10 @@ import numpy as np
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 
+############################################################################################################
+## Classes and functions ###################################################################################
+############################################################################################################
+
 class mol_geom():
     """
     Creates a molecular geometry object.
@@ -189,6 +193,8 @@ class Diffraction():
         self.sM_2D = self.sr*self.I_mol_2D/self.I_at_2D # Modified molecular diffraction
         
 ############################################################################################################
+## Example code for diffraction of 1,3-cyclohexadiene ######################################################
+############################################################################################################
 
 fname = 'CHD_6-31Gd.xyz'
 
@@ -212,21 +218,25 @@ CHD_Diff.make_1D_diffraction()
 
 # Figure showing 1D diffraction
 plt.figure()
+
 plt.subplot(2,2,1)
 plt.title('Atomic contribution')
 plt.semilogy(CHD_Diff.s,CHD_Diff.I_at_1D)
 plt.xlabel('s / $\AA^{-1}$')
 plt.ylabel('$\sigma$ / $a_{0}^{2}/{sr}$')
+
 plt.subplot(2,2,2)
 plt.title('Molecular contribution')
 plt.plot(CHD_Diff.s,CHD_Diff.I_mol_1D)
 plt.xlabel('s / $\AA^{-1}$')
 plt.ylabel('$\sigma$ / $a_{0}^{2}/{sr}$')
+
 plt.subplot(2,2,3)
 plt.title('Total signal')
 plt.semilogy(CHD_Diff.s,CHD_Diff.I_mol_1D+CHD_Diff.I_at_1D)
 plt.xlabel('s / $\AA^{-1}$')
 plt.ylabel('$\sigma$ / $a_{0}^{2}/{sr}$')
+
 plt.subplot(2,2,4)
 plt.title('Modified diffraction')
 plt.plot(CHD_Diff.s,CHD_Diff.sM_1D)
@@ -236,7 +246,8 @@ plt.tight_layout()
 
 CHD_Diff.make_2D_diffraction()
 
-# Figure showing 2D diffraction
+# Figure showing 2D diffraction. The limits of the color bar (vmin, vmax) will have to
+# be adjusted for other molecules.
 plt.figure()
 plt.subplot(2,2,1)
 plt.title('Atomic contribution')
@@ -244,18 +255,21 @@ plt.pcolormesh(CHD_Diff.sy,CHD_Diff.sz,CHD_Diff.I_at_2D)
 plt.xlabel('s / $\AA^{-1}$')
 plt.ylabel('s / $\AA^{-1}$')
 plt.colorbar()
+
 plt.subplot(2,2,2)
 plt.title('Molecular contribution')
 plt.pcolormesh(CHD_Diff.sy,CHD_Diff.sz,CHD_Diff.I_mol_2D,vmin=-1000,vmax = 10000)
 plt.xlabel('s / $\AA^{-1}$')
 plt.ylabel('s / $\AA^{-1}$')
 plt.colorbar()
+
 plt.subplot(2,2,3)
 plt.title('Total signal')
 plt.pcolormesh(CHD_Diff.sy,CHD_Diff.sz,CHD_Diff.I_mol_2D+CHD_Diff.I_at_2D,vmin=0,vmax = 10000)
 plt.xlabel('s / $\AA^{-1}$')
 plt.ylabel('s / $\AA^{-1}$')
 plt.colorbar()
+
 plt.subplot(2,2,4)
 plt.title('Modified diffraction')
 plt.pcolormesh(CHD_Diff.sy,CHD_Diff.sz,CHD_Diff.sM_2D)
