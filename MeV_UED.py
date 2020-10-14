@@ -11,6 +11,7 @@ np.seterr(divide='ignore', invalid='ignore')
 from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import glob, os
+from timer import Timer
 
 ############################################################################################################
 ## Classes and functions ###################################################################################
@@ -61,73 +62,61 @@ class mol_geom():
 class mol_trajs():
     """Process many trajectories"""
             
-    def __init__(self):
+    def __init__(self,searchStr="*.xyz"):
         self.workDir = '/Users/bwt/working/Diffraction_simulation/Traj_SI_113'
         os.chdir(self.workDir)
-        print(f"Setting current directory to: {self.workDir}")
-        self.fnames = self.files()
+        print(f"Setting current directory to: {self.workDir}, searching for files that match {searchStr}")
+        self.fnames = self.files(searchStr)
         
-        
-    def files(self,searchStr="*.xyz"):
+    def files(self,searchStr):
         """Function to add files to object."""
-        #print(f"Searching in {os.getcwd()}:")
         filenames = [fname for fname in glob.glob(searchStr)]
-        return filenames 
+        return sorted(filenames)
 
     
     def proc_trajs(self):
         """Function to process *.xyz trajectories."""
         self.alltraj_mol = []
         self.alltraj_sM = []
-
+        AtScatXSect = Atomic_Scattering_Cross_Sections()
+        
         for fname in self.fnames:
-            traj_i = mol_traj(fname)
+            traj_i = mol_traj(fname,AtScatXSect)
             traj_i.proc_traj()
-            
-        self.alltraj_mol.append(np.array(traj_i.traj_I_mol_1D))
-        self.alltraj_sM.append (np.array(traj_i.traj_sM_1D))       
+            self.alltraj_mol.append(np.array(traj_i.traj_I_mol_1D))
+            self.alltraj_sM.append (np.array(traj_i.traj_sM_1D))       
     
              
 ############################################################################################################
 
 class mol_traj():
-    """
-    Creates a molecular trajectory object.
-    Arguments: 
-    filename: Path to a molecular trajectory (*.xyz) file. See below for the file format expected
-    """
-    def __init__(self,filename):
+    """Creates a molecular trajectory object."""
+    def __init__(self,filename,AtScatXSect):
         """Function to initialize the geometry object by loading geometry data."""
         self.deltat = 0.194
         self.load_traj(filename)
-        self.AtScatXSect = Atomic_Scattering_Cross_Sections()
-
-    
+        self.AtScatXSect = AtScatXSect
+        
     
     def load_traj(self,filename):
-        """Function to load geometry data from an *.xyz trajectory."""
+        """Function to load geometry data from an *.xyz trajectory. Took about 0.0094 seconds per file"""
         with open(filename,'r') as geofile:
             geostr = geofile.readlines()
             
         nAtoms = int(geostr[0]) # number of atoms
         nSteps = int(len(geostr) / (nAtoms + 2))
-        print(f"{filename}: nAtoms = {nAtoms} & nSteps = {nSteps}. Is that correct?")
+        print(f"{filename}:\tnAtoms = {nAtoms} & nSteps = {nSteps}.")
         self.fname = filename
         self.nAtoms = nAtoms
         self.nSteps = nSteps
-        self.tAxis = np.linspace(0,nSteps*self.deltat,nSteps)
-
-        
+        self.tAxis = np.linspace(0,nSteps*self.deltat,nSteps) 
         self.geoarray = []
+        
         for step in range(nSteps):
-            # e.g. at step indices for 5 atoms
-            #0: 2:7
-            #1: 8:13
-            #2: 14:19
+            # The indicies for 5 atoms at steps 0,1,2 are 2:7, 1: 8:13, 14:19
             xyz = geostr[(2+nAtoms)*step + 2 : (2+nAtoms)*(step+1)]
             self.geoarray.append(xyz)
-            
-            
+                  
         try:
             self.coordinates = []
             for i, geo in enumerate(self.geoarray):
@@ -137,6 +126,7 @@ class mol_traj():
         except: 
             print("Problem loading or parsing trajectory")    
             
+        
     def geom_parser(self,geostr):
         """Should have removed header, just N X Y Z entries"""
         coordinates = np.zeros((len(geostr),3))
@@ -153,20 +143,37 @@ class mol_traj():
     
     def proc_traj(self):
         """Function to process *.xyz trajectory."""
-        self.traj_I_at_1D = []
+        #t = Timer()
+        #t.start()
+        self.traj_I_at_1D = [] #  Python list append uses 2.3 seconds per traj. Try numpy...
+                                # Not quite true, seems to be from parent mol_trajs class. Just running mol_traj() only takes 0.62 seconds
         self.traj_I_mol_1D = []
         self.traj_sM_1D = []
-    
+        #self.traj_I_at_1D = np.zeros((self.nSteps,120))
+        #self.traj_I_mol_1D = np.zeros_like(self.traj_I_at_1D)
+        #self.traj_sM_1D = np.zeros_like(self.traj_I_at_1D)     
+        
+        params = Parameters()
+        params.elements = self.elements # may go wrong if the atoms get reordered in XYZ file?
+        Diff = Diffraction_v2(params,self.AtScatXSect)
+        
         for step in range(self.nSteps):
-            Diff = Diffraction(self,step=int(step))
-            Diff.make_1D_diffraction()
+            params.coord_step = self.coordinates[step]
+            Diff.make_1D_diffraction(params)
             self.traj_I_at_1D.append(Diff.I_at_1D)
             self.traj_I_mol_1D.append(Diff.I_mol_1D)
             self.traj_sM_1D.append(Diff.sM_1D)
+            #self.traj_I_at_1D[step]  = Diff.I_at_1D
+            #self.traj_I_mol_1D[step] = Diff.I_mol_1D
+            #self.traj_sM_1D[step]    = Diff.sM_1D
         
         self.s = Diff.s
-        
-        
+        #t.stop()
+
+############################################################################################################
+
+class Parameters(): 
+    pass
             
 ############################################################################################################
             
@@ -182,11 +189,12 @@ class Atomic_Scattering_Cross_Sections():
         """
         Function to initialize the form factor object by loading form factors.
         """
-        self.scatteringkDir = '/Users/bwt/working/Diffraction_simulation'
+        self.ELSEPAdir = '/Users/bwt/working/Diffraction_simulation/ELSEPA'
         # This line must be edited to add elements:
         self.supported_elements = ['H', 'He', 'C', 'N', 'O', 'F', 'S', 'Fe', 'Br', 'I']
         for element in self.supported_elements:
             exec('self.' + element +", self.thetadeg = self.load_form_fact('" + element + "')")
+    
     
     def load_form_fact(self,Element):
         """
@@ -201,7 +209,7 @@ class Atomic_Scattering_Cross_Sections():
         if len(Element)<2:
             Element = Element + ' '
             
-        with open(self.scatteringkDir + '/' + Element + '3p7MeV.dat') as f:
+        with open(self.ELSEPAdir + '/' + Element + '3p7MeV.dat') as f:
             lines = f.readlines()
         
         for i,line in enumerate(lines):
@@ -217,12 +225,13 @@ class Atomic_Scattering_Cross_Sections():
             thetadeg[i] = (float(lines[i].split()[0]))
             FF[i] = (float(lines[i].split()[3]))
         return FF, thetadeg
+      
         
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d     
 
 ############################################################################################################
 
-class Diffraction():
+class Diffraction_v2():
     """
     Creates a diffraction object.
     Arguments:
@@ -231,17 +240,17 @@ class Diffraction():
     Npixel: Length of Q-array
     Max_Q:  Maximum Q in inverse Angstroms
     """
-    def __init__(self,traj,step,Npixel=120,Max_s=12):
+    def __init__(self,params,AtScatXSect,Npixel=120,Max_s=12):
         """
         Function to initialize Diffraction object.
         """
-        #print("Diffraction(): Step:", step)
-        self.coordinates = traj.coordinates[step]
-        self.elements = traj.elements
-        self.AtScatXSect = Atomic_Scattering_Cross_Sections()
+        self.elements = params.elements
+        self.natom = len(self.elements)
+        self.AtScatXSect = AtScatXSect
         self.U = 3.7 # Electron kinetic energy
         self.Max_s = Max_s
         self.Npixel = Npixel
+        self.s = np.linspace(0,np.float(self.Max_s),self.Npixel)
         
         E=self.U*1e6*1.6022*1e-19
         m=9.1094e-31
@@ -253,63 +262,61 @@ class Diffraction():
 
         thetarad = self.AtScatXSect.thetadeg/360*2*np.pi
         self.a = 4*np.pi/lambdaEl*np.sin(thetarad/2)/1E10
+        self.make_at_diffraction()
         
         
-    def make_1D_diffraction(self):
-        """
-        Function to create a 1D diffraction pattern assuming an ensemble of randomly oriented
-        molecules.
-        """
-        natom = len(self.elements)
-        self.s = np.linspace(0,np.float(self.Max_s),self.Npixel)
-
+    def make_at_diffraction(self):
+        """Invariant to atom position, we can compute this just one time and store away"""
         
-
+        # 1D
         self.I_at_1D = np.zeros((len(self.s),)) # Atomic scattering contribution to diffraction signal
-        fmap = []
+        self.fmap1D = []
         for element in self.elements:
             namespace = {'interp1d'}
             f = eval('interp1d(self.a,np.sqrt(self.AtScatXSect.' + element + '))')
-            fmap.append(f(self.s))
-            self.I_at_1D += np.square(abs(f(self.s)))
-
-        # Contribution from interference between atoms to diffaction signal:
-        self.I_mol_1D = np.zeros_like(self.I_at_1D) 
-        for i in np.arange(natom):
-            for j in np.arange(natom):
-                if i!=j:
-                    dist = np.sqrt(np.square(self.coordinates[i,:]-self.coordinates[j,:]).sum())
-                    # Error from divide by zero, can either add eps = 1e-7 to dist*self.s or np.seterr(divide='ignore', invalid='ignore')
-                    #print(f"Division involves zeros: \n{dist*self.s}, \n{np.sin(dist*self.s)}")
-                    self.I_mol_1D += abs(fmap[i])*abs(fmap[j])*np.sin(dist*self.s)/(dist*self.s)
-
-        self.sM_1D = self.s*self.I_mol_1D/self.I_at_1D # Modified molecular diffraction
-        
-    def make_2D_diffraction(self):
-        """
-        Function to create a 2D diffraction pattern assuming an ensemble of randomly oriented
-        molecules.
-        """
+            self.fmap1D.append(f(self.s))
+            self.I_at_1D += np.square(abs(f(self.s)))      
+                  
+        # 2D    
         self.sy,self.sz = np.meshgrid(np.arange(-1*self.Max_s,self.Max_s,2*self.Max_s/self.Npixel), \
                             np.arange(-1*self.Max_s,self.Max_s,2*self.Max_s/self.Npixel))
         self.sr = np.sqrt(np.square(self.sy)+np.square(self.sz))
-        natom = len(self.elements)
-
-        self.I_at_2D = np.zeros_like(self.sr) # Atomic scattering contribution to diffraction signal
-        fmap = []
+        self.I_at_2D = np.zeros_like(self.sr) # Atomic scattering contribution to diffraction signal  
+        self.fmap2D = []
         for element in self.elements:
             f = eval('interp1d(self.a,np.sqrt(self.AtScatXSect.' + element + '))')
-            fmap.append(f(self.sr))
+            self.fmap2D.append(f(self.sr))
             self.I_at_2D += np.square(abs(f(self.sr)))
+            
+        
+    def make_1D_diffraction(self,params):
+        """Function to create a 1D diffraction pattern assuming an ensemble of randomly oriented molecules."""
+        # Contribution from interference between atoms to diffaction signal:
+        self.coord_step = params.coord_step
+        self.I_mol_1D = np.zeros_like(self.I_at_1D) 
+        for i in np.arange(self.natom):
+            for j in np.arange(self.natom):
+                if i!=j:
+                    dist = np.sqrt(np.square(self.coord_step[i,:]-self.coord_step[j,:]).sum())
+                    # Error from divide by zero, can either add eps = 1e-7 to dist*self.s or np.seterr(divide='ignore', invalid='ignore')
+                    #print(f"Division involves zeros: \n{dist*self.s}, \n{np.sin(dist*self.s)}")
+                    self.I_mol_1D += abs(self.fmap1D[i])*abs(self.fmap1D[j])*np.sin(dist*self.s)/(dist*self.s)
 
+        self.sM_1D = self.s*self.I_mol_1D/self.I_at_1D # Modified molecular diffraction
+
+
+    def make_2D_diffraction(self):
+        """Function to create a 2D diffraction pattern assuming an ensemble of randomly oriented molecules."""
         # Contribution from interference between atoms to diffaction signal:
         self.I_mol_2D = np.zeros_like(self.I_at_2D) 
-        for i in np.arange(natom):
-            for j in np.arange(natom):
+        for i in np.arange(self.natom):
+            for j in np.arange(self.natom):
                 if i!=j:
-                    dist = np.sqrt(np.square(self.coordinates[i,:]-self.coordinates[j,:]).sum())
-                    self.I_mol_2D += abs(fmap[i])*abs(fmap[j])*np.sin(dist*self.sr)/(dist*self.sr) 
+                    dist = np.sqrt(np.square(self.coord_step[i,:]-self.coord_step[j,:]).sum())
+                    self.I_mol_2D += abs(self.fmap2D[i])*abs(self.fmap2D[j])*np.sin(dist*self.sr)/(dist*self.sr) 
 
-        self.sM_2D = self.sr*self.I_mol_2D/self.I_at_2D # Modified molecular diffraction
+        self.sM_2D = self.sr*self.I_mol_2D/self.I_at_2D # Modified molecular diffraction        
         
-
+        
+############################################################################################################        
+        
