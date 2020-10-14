@@ -1,5 +1,5 @@
 # Diffraction_simulation
-Many thanks to Thomas Wolf for sharing & helping make Science an open endeavour
+Many thanks to Thomas Wolf for sharing & helping make Science an open endeavour.
 Original code here: https://github.com/ThomasJAWolf/Diffraction_simulation
 Simulates electron diffraction signal for molecular trajectories.
 

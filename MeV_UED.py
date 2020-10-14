@@ -155,7 +155,7 @@ class mol_traj():
         
         params = Parameters()
         params.elements = self.elements # may go wrong if the atoms get reordered in XYZ file?
-        Diff = Diffraction_v2(params,self.AtScatXSect)
+        Diff = Diffraction(params,self.AtScatXSect)
         
         for step in range(self.nSteps):
             params.coord_step = self.coordinates[step]
@@ -231,7 +231,7 @@ from scipy.interpolate import interp1d
 
 ############################################################################################################
 
-class Diffraction_v2():
+class Diffraction():
     """
     Creates a diffraction object.
     Arguments:
